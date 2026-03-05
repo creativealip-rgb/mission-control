@@ -66,7 +66,7 @@ export async function rpc(
     toolName: string,
     parameters: Record<string, unknown> = {},
     timeoutMs = 10_000
-): Promise<OpenClawResponse> {
+): Promise<Record<string, unknown>> {
     return new Promise((resolve, reject) => {
         const id = nextId();
         const timer = setTimeout(() => {
@@ -88,23 +88,60 @@ export async function rpc(
             return;
         }
 
-        ws.on('open', () => {
-            const msg: OpenClawMessage = {
-                id,
-                type: 'tool_call',
-                tool: { name: toolName, parameters },
-                auth: { token: GATEWAY_TOKEN },
-            };
-            ws.send(JSON.stringify(msg));
-        });
-
         ws.on('message', (raw) => {
             try {
-                const resp = JSON.parse(raw.toString()) as OpenClawResponse;
-                if (resp.id === id) {
+                const data = JSON.parse(raw.toString()) as any;
+
+                // Handle connection challenge
+                if (data.type === 'event' && data.event === 'connect.challenge') {
+                    const nonce = data.payload?.nonce;
+                    if (!nonce) {
+                        clearTimeout(timer);
+                        reject(new Error('Gateway connect challenge missing nonce'));
+                        return;
+                    }
+
+                    // Send connect message with full schema
+                    const connectMsg = {
+                        minProtocol: 3,
+                        maxProtocol: 3,
+                        client: {
+                            id: 'cli',
+                            version: '1.0.0',
+                            platform: process.platform,
+                            mode: 'cli',
+                        },
+                        role: 'operator',
+                        scopes: ['operator.read', 'operator.write', 'operator.admin'],
+                        auth: {
+                            token: GATEWAY_TOKEN,
+                        },
+                    };
+                    ws.send(JSON.stringify(connectMsg));
+
+                    // Send req message after short delay
+                    setTimeout(() => {
+                        const msg = {
+                            type: 'req',
+                            id,
+                            method: toolName,
+                            params: parameters,
+                        };
+                        ws.send(JSON.stringify(msg));
+                    }, 100);
+                    return;
+                }
+
+                // Handle response
+                if (data.type === 'res' && data.id === id) {
                     clearTimeout(timer);
                     ws.close();
-                    resolve(resp);
+                    
+                    if (data.ok) {
+                        resolve(data.payload);
+                    } else {
+                        reject(new Error(data.error?.message || 'Gateway request failed'));
+                    }
                 }
             } catch { }
         });
@@ -120,8 +157,8 @@ export async function rpc(
 
 /** List all configured agents */
 export async function agentsList(): Promise<OpenClawAgent[]> {
-    const resp = await rpc('agents_list');
-    return (resp.data?.agents as OpenClawAgent[]) || [];
+    const resp = await rpc('agents.list');
+    return (resp?.agents as OpenClawAgent[]) || [];
 }
 
 /** List active sessions */
@@ -130,22 +167,22 @@ export async function sessionsList(opts?: {
     activeMinutes?: number;
     limit?: number;
 }): Promise<OpenClawSession[]> {
-    const resp = await rpc('sessions_list', {
+    const resp = await rpc('sessions.list', {
         kinds: opts?.kinds || ['subagent', 'acp'],
         activeMinutes: opts?.activeMinutes ?? 5,
         limit: opts?.limit ?? 20,
     });
-    return (resp.data?.sessions as OpenClawSession[]) || [];
+    return (resp?.sessions as OpenClawSession[]) || [];
 }
 
 /** Get chat history for a session */
 export async function sessionsHistory(sessionKey: string, limit = 50) {
-    const resp = await rpc('sessions_history', {
+    const resp = await rpc('sessions.history', {
         sessionKey,
         limit,
         includeTools: true,
     });
-    return resp.data;
+    return resp;
 }
 
 /** Send a message to a session (used for Ping) */
@@ -154,7 +191,7 @@ export async function sessionsSend(
     message: string,
     timeoutSeconds = 5
 ) {
-    const resp = await rpc('sessions_send', {
+    const resp = await rpc('sessions.send', {
         sessionKey,
         message,
         timeoutSeconds,
@@ -164,20 +201,20 @@ export async function sessionsSend(
 
 /** List cron jobs */
 export async function cronList(): Promise<OpenClawCronJob[]> {
-    const resp = await rpc('cron_list');
-    return (resp.data?.jobs as OpenClawCronJob[]) || [];
+    const resp = await rpc('cron.list');
+    return (resp?.jobs as OpenClawCronJob[]) || [];
 }
 
 /** Get gateway health/status */
 export async function gatewayStatus() {
     const resp = await rpc('status');
-    return resp.data;
+    return resp;
 }
 
 /** Get gateway health check */
 export async function gatewayHealth() {
     const resp = await rpc('health');
-    return resp.data;
+    return resp;
 }
 
 /** List subagents with recent activity */
@@ -186,7 +223,7 @@ export async function subagentsList(recentMinutes = 1) {
         action: 'list',
         recentMinutes,
     });
-    return resp.data;
+    return resp;
 }
 
 /** Steer/pause a subagent */

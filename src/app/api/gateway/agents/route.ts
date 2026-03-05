@@ -1,15 +1,36 @@
 import { NextResponse } from 'next/server';
-import * as oc from '@/lib/openclaw-client';
+import { openclawBridge, validateConfig } from '@/lib/openclaw';
 
 export async function GET() {
-    if (!oc.isConfigured()) {
-        return NextResponse.json({ agents: [], configured: false });
+    const validation = validateConfig();
+    if (!validation.valid) {
+        return NextResponse.json({ 
+            agents: [], 
+            configured: false,
+            error: validation.error 
+        });
     }
 
     try {
-        const agents = await oc.agentsList();
-        return NextResponse.json({ agents, configured: true });
+        const result = await openclawBridge.listAgents();
+        
+        if (!result.success) {
+            return NextResponse.json({ 
+                agents: [], 
+                configured: true,
+                error: result.error 
+            });
+        }
+
+        return NextResponse.json({ 
+            agents: result.data || [], 
+            configured: true 
+        });
     } catch (err: any) {
-        return NextResponse.json({ agents: [], error: err.message });
+        return NextResponse.json({ 
+            agents: [], 
+            configured: true,
+            error: err.message 
+        });
     }
 }

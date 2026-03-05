@@ -1,15 +1,21 @@
 import { NextResponse } from 'next/server';
-import * as oc from '@/lib/openclaw-client';
+import { validateConfig } from '@/lib/openclaw';
 
 export async function GET() {
-    if (!oc.isConfigured()) {
-        return NextResponse.json({ jobs: [], configured: false });
+    const validation = validateConfig();
+    if (!validation.valid) {
+        return NextResponse.json({ 
+            jobs: [], 
+            configured: false,
+            error: validation.error 
+        });
     }
 
-    try {
-        const jobs = await oc.cronList();
-        return NextResponse.json({ jobs, configured: true });
-    } catch (err: any) {
-        return NextResponse.json({ jobs: [], error: err.message });
-    }
+    // Note: cron list might not be available in all OpenClaw versions
+    // For now, return empty array - implement if CLI supports it
+    return NextResponse.json({ 
+        jobs: [], 
+        configured: true,
+        note: 'Cron jobs not available via SSH bridge' 
+    });
 }

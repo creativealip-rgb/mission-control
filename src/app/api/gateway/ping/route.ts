@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
-import * as oc from '@/lib/openclaw-client';
+import { openclawBridge, validateConfig } from '@/lib/openclaw';
 
 export async function POST(request: Request) {
-    if (!oc.isConfigured()) {
-        return NextResponse.json({ success: false, message: 'Gateway not configured' });
+    const validation = validateConfig();
+    if (!validation.valid) {
+        return NextResponse.json({ 
+            success: false, 
+            message: 'Gateway not configured',
+            error: validation.error 
+        });
     }
 
     try {
@@ -11,9 +16,23 @@ export async function POST(request: Request) {
         const targetSession = sessionKey || 'agent:main:main';
         const pingMessage = message || 'heartbeat: check status';
 
-        const resp = await oc.sessionsSend(targetSession, pingMessage, 5);
-        return NextResponse.json({ success: true, response: resp });
+        const result = await openclawBridge.sendToAgent(targetSession, pingMessage);
+        
+        if (!result.success) {
+            return NextResponse.json({ 
+                success: false, 
+                error: result.error 
+            });
+        }
+
+        return NextResponse.json({ 
+            success: true, 
+            response: result.data 
+        });
     } catch (err: any) {
-        return NextResponse.json({ success: false, error: err.message });
+        return NextResponse.json({ 
+            success: false, 
+            error: err.message 
+        });
     }
 }

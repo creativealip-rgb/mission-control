@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import * as oc from '@/lib/openclaw-client';
+import { openclawBridge, validateConfig } from '@/lib/openclaw';
 import db from '@/lib/db';
 
 export async function POST(request: Request) {
@@ -22,10 +22,11 @@ export async function POST(request: Request) {
     `).run(isPaused ? 'true' : 'false');
     } catch { }
 
-    // Also try to steer via OpenClaw if configured
-    if (oc.isConfigured() && action === 'pause') {
+    // Also try to pause via OpenClaw if configured
+    const validation = validateConfig();
+    if (validation.valid && action === 'pause') {
         try {
-            await oc.subagentsSteer('agent:main:subagent:*', 'PAUSE');
+            await openclawBridge.pauseAgent('agent:main:subagent:*');
         } catch { }
     }
 
