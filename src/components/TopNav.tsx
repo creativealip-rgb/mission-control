@@ -1,11 +1,34 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { PanelLeft, Eye, RefreshCw, Search, Pause, Play } from 'lucide-react';
 
 export default function TopNav() {
     const [isPaused, setIsPaused] = useState(false);
     const [pinging, setPinging] = useState(false);
+    const [gwStatus, setGwStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+    const [sessionCount, setSessionCount] = useState(0);
+
+    const checkStatus = useCallback(async () => {
+        try {
+            const [statusRes, sessRes] = await Promise.all([
+                fetch('/api/gateway/status'),
+                fetch('/api/gateway/sessions'),
+            ]);
+            const statusData = await statusRes.json();
+            const sessData = await sessRes.json();
+            setGwStatus(statusData.connected ? 'online' : 'offline');
+            setSessionCount((sessData.sessions ?? []).length);
+        } catch {
+            setGwStatus('offline');
+        }
+    }, []);
+
+    useEffect(() => {
+        checkStatus();
+        const interval = setInterval(checkStatus, 30_000);
+        return () => clearInterval(interval);
+    }, [checkStatus]);
 
     async function handlePing() {
         setPinging(true);
@@ -51,6 +74,28 @@ export default function TopNav() {
                 </div>
 
                 <div className="flex items-center gap-3 ml-4">
+                    {/* Gateway Status */}
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-[#0a0a0a] border border-[#1a1a1a]">
+                        <span className={`w-1.5 h-1.5 rounded-full ${gwStatus === 'online'
+                            ? 'bg-emerald-400 animate-pulse'
+                            : gwStatus === 'offline'
+                                ? 'bg-red-500'
+                                : 'bg-amber-400 animate-pulse'
+                            }`} />
+                        <span className={`text-[10px] font-medium ${gwStatus === 'online'
+                            ? 'text-emerald-400'
+                            : gwStatus === 'offline'
+                                ? 'text-red-400'
+                                : 'text-amber-400'
+                            }`}>
+                            {gwStatus === 'online'
+                                ? `OpenClaw · ${sessionCount} active`
+                                : gwStatus === 'offline'
+                                    ? 'OpenClaw · Offline'
+                                    : 'Checking...'}
+                        </span>
+                    </div>
+
                     <button
                         onClick={handlePing}
                         className={`text-xs font-medium transition-colors ${pinging ? 'text-emerald-400' : 'text-[#888888] hover:text-white'}`}
@@ -60,7 +105,11 @@ export default function TopNav() {
                     <button className="text-[#666666] hover:text-white transition-colors flex items-center justify-center">
                         <Eye size={14} />
                     </button>
-                    <button className="text-[#666666] hover:text-white transition-colors flex items-center justify-center">
+                    <button
+                        onClick={checkStatus}
+                        className="text-[#666666] hover:text-white transition-colors flex items-center justify-center"
+                        title="Refresh gateway status"
+                    >
                         <RefreshCw size={13} />
                     </button>
                 </div>

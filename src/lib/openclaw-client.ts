@@ -62,7 +62,7 @@ function nextId(): string {
  * Send a single RPC call to the OpenClaw Gateway and wait for the response.
  * Opens a fresh WS connection per call (simple but safe for server-side API routes).
  */
-async function rpc(
+export async function rpc(
     toolName: string,
     parameters: Record<string, unknown> = {},
     timeoutMs = 10_000
